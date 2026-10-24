@@ -1,0 +1,45 @@
+name: setlistmanager
+description: "OkayNext — Setlist manager and MIDI controller for Ableton Live"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  provider: ^6.1.2
+  web_socket_channel: ^3.0.1
+  shared_preferences: ^2.3.2
+  uuid: ^4.5.1
+  reorderable_grid_view: ^2.2.8
+  flutter_midi_command: ^1.0.3
+  permission_handler: ^11.3.1
+  flutter_midi_command_ble: ^1.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  windows:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+    icon_size: 48
+  image_path: "assets/icon/app_icon.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#080808"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/icon/

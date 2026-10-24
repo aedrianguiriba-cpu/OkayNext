@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/guiri/.claude/projects/d--Documents-mob_web-setlistmanager/memory/**)",
+      "PowerShell(Copy-Item \"D:\\\\Documents\\\\Ableton\\\\User Library\\\\Remote Scripts\\\\SetlistBridge\\\\__init__.py\" \"d:\\\\Documents\\\\mob_web\\\\setlistmanager\\\\ableton_remote_script\\\\SetlistBridge\\\\__init__.py\" -Force)",
+      "Bash(flutter analyze *)",
+      "Read(//c/ProgramData/Ableton/**)",
+      "Read(//c/Users/guiri/AppData/Roaming/Ableton/**)",
+      "PowerShell(netsh advfirewall firewall show rule name=\"SetlistBridge_TCP_9000\" 2>&1)",
+      "PowerShell(netsh advfirewall firewall show rule name=\"SetlistBridge_UDP_19001\" 2>&1)",
+      "PowerShell(netstat -ano)",
+      "Read(//d/Documents/Ableton/User Library/Remote Scripts/SetlistBridge/**)",
+      "Bash(dart analyze *)",
+      "PowerShell(Copy-Item -Path \"D:\\\\Documents\\\\Ableton\\\\User Library\\\\Remote Scripts\\\\SetlistBridge\\\\__init__.py\" -Destination \"d:\\\\Documents\\\\mob_web\\\\setlistmanager\\\\ableton_remote_script\\\\SetlistBridge\\\\__init__.py\" -Force)"
+    ],
+    "additionalDirectories": [
+      "D:\\Documents\\Ableton\\User Library\\Remote Scripts\\SetlistBridge"
+    ]
+  }
+}
