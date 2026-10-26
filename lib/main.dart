@@ -28,11 +28,16 @@ class SetlistManagerApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => AbletonProvider(AbletonService()),
         ),
-        ChangeNotifierProxyProvider<AbletonProvider, MidiProvider>(
+        ChangeNotifierProxyProvider2<AbletonProvider, LocatorGroupsProvider,
+            MidiProvider>(
           lazy: false, // must exist at startup to listen for MIDI input
-          create: (ctx) =>
-              MidiProvider(MidiService(), ctx.read<AbletonProvider>()),
-          update: (_, ableton, prev) => prev!..updateAbleton(ableton),
+          create: (ctx) => MidiProvider(
+            MidiService(),
+            ctx.read<AbletonProvider>(),
+            ctx.read<LocatorGroupsProvider>(),
+          ),
+          update: (_, ableton, groups, prev) =>
+              prev!..updateAbleton(ableton)..updateGroups(groups),
         ),
       ],
       child: Consumer<ThemeProvider>(

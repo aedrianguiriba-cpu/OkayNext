@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_midi_command/flutter_midi_command.dart';
 import 'package:provider/provider.dart';
 import '../models/midi_mapping.dart';
+import '../providers/locator_groups_provider.dart';
 import '../providers/midi_provider.dart';
 import '../theme/app_theme.dart';
 
@@ -39,6 +40,7 @@ class _MidiScreenState extends State<MidiScreen> {
   Widget build(BuildContext context) {
     final midi = context.watch<MidiProvider>();
     final col = context.col;
+    final sceneCount = context.watch<LocatorGroupsProvider>().scenes.length;
 
     return Scaffold(
       appBar: AppBar(
@@ -97,7 +99,9 @@ class _MidiScreenState extends State<MidiScreen> {
           const SizedBox(height: 4),
           if (midi.learningFor != null) _LearnBanner(action: midi.learningFor!),
           const SizedBox(height: 4),
-          ...MidiAction.values.map((a) => _MappingRow(action: a)),
+          ...MidiAction.values
+              .where((a) => a.sceneIndex == null || a.sceneIndex! < sceneCount)
+              .map((a) => _MappingRow(action: a)),
 
           const SizedBox(height: 32),
         ],
@@ -142,7 +146,10 @@ class _MidiScreenState extends State<MidiScreen> {
       backgroundColor: context.col.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (_) => _ReferenceSheet(mappings: midi.mappings),
+      builder: (_) => _ReferenceSheet(
+        mappings: midi.mappings,
+        sceneCount: context.read<LocatorGroupsProvider>().scenes.length,
+      ),
     );
   }
 
@@ -203,7 +210,8 @@ class _MidiScreenState extends State<MidiScreen> {
 
 class _ReferenceSheet extends StatelessWidget {
   final List<MidiMapping> mappings;
-  const _ReferenceSheet({required this.mappings});
+  final int sceneCount;
+  const _ReferenceSheet({required this.mappings, required this.sceneCount});
 
   @override
   Widget build(BuildContext context) {
@@ -259,7 +267,9 @@ class _ReferenceSheet extends StatelessWidget {
               ),
             ),
             Divider(color: col.border),
-            ...MidiAction.values.map((action) {
+            ...MidiAction.values
+                .where((a) => a.sceneIndex == null || a.sceneIndex! < sceneCount)
+                .map((action) {
               final m = mappings.where((x) => x.action == action).firstOrNull;
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),

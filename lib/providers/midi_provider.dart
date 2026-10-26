@@ -5,10 +5,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/midi_mapping.dart';
 import '../services/midi_service.dart';
 import 'ableton_provider.dart';
+import 'locator_groups_provider.dart';
 
 class MidiProvider extends ChangeNotifier {
   final MidiService _midi;
   AbletonProvider _ableton;
+  LocatorGroupsProvider _groups;
 
   List<MidiDevice> _devices = [];
   MidiDevice? _connectedDevice;
@@ -32,12 +34,16 @@ class MidiProvider extends ChangeNotifier {
     }
   }
 
-  MidiProvider(this._midi, this._ableton) {
+  MidiProvider(this._midi, this._ableton, this._groups) {
     _init();
   }
 
   void updateAbleton(AbletonProvider ableton) {
     _ableton = ableton;
+  }
+
+  void updateGroups(LocatorGroupsProvider groups) {
+    _groups = groups;
   }
 
   Future<void> _init() async {
@@ -186,6 +192,34 @@ class MidiProvider extends ChangeNotifier {
     }
   }
 
+  // ── Scenes ────────────────────────────────────────────────────────────
+
+  /// Switches to scene [i]'s setlist. Ignored if the scene doesn't exist, has
+  /// no setlist, or is already the active one.
+  Future<void> _activateScene(int i) async {
+    if (i >= _groups.scenes.length || _groups.isSceneActive(i)) return;
+    if (await _groups.activateScene(i)) _ableton.selectStartOfSetlist();
+  }
+
+  /// Moves to the next/previous scene that has a setlist, wrapping around.
+  void _stepScene(int delta) {
+    final n = _groups.scenes.length;
+    var current = -1;
+    for (var i = 0; i < n; i++) {
+      if (_groups.isSceneActive(i)) {
+        current = i;
+        break;
+      }
+    }
+    for (var k = 1; k <= n; k++) {
+      final i = ((current + delta * k) % n + n) % n;
+      if (i != current && _groups.setlistForScene(i) != null) {
+        _activateScene(i);
+        return;
+      }
+    }
+  }
+
   // Last CC value sent per fader, so a controller streaming repeated values
   // doesn't flood Ableton.
   final Map<MidiAction, int> _lastFaderValue = {};
@@ -213,6 +247,23 @@ class MidiProvider extends ChangeNotifier {
         _ableton.setMasterVolume(level);
       case MidiAction.cueVolume:
         _ableton.setCueVolume(level);
+      case MidiAction.nextScene:
+        _stepScene(1);
+      case MidiAction.previousScene:
+        _stepScene(-1);
+      case MidiAction.scene1:
+      case MidiAction.scene2:
+      case MidiAction.scene3:
+      case MidiAction.scene4:
+      case MidiAction.scene5:
+      case MidiAction.scene6:
+      case MidiAction.scene7:
+      case MidiAction.scene8:
+      case MidiAction.scene9:
+      case MidiAction.scene10:
+      case MidiAction.scene11:
+      case MidiAction.scene12:
+        _activateScene(action.sceneIndex!);
     }
   }
 

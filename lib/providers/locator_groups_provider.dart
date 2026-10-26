@@ -161,6 +161,21 @@ class LocatorGroupsProvider extends ChangeNotifier {
     return null;
   }
 
+  /// The scene whose setlist is currently in use (first match), or null.
+  int? get activeSceneIndex {
+    for (var i = 0; i < _scenes.length; i++) {
+      if (isSceneActive(i)) return i;
+    }
+    return null;
+  }
+
+  /// Name to show for "what's live": the active scene's name, falling back to
+  /// the setlist's name when no scene is assigned to it.
+  String get activeDisplayName {
+    final i = activeSceneIndex;
+    return i == null ? activeSetlistName : _scenes[i].name;
+  }
+
   /// True when scene [i]'s setlist is the one currently in use.
   bool isSceneActive(int i) =>
       _scenes[i].setlistId != null && _scenes[i].setlistId == _activeId;

@@ -12,11 +12,31 @@ enum MidiAction {
   loop,
   masterVolume,
   cueVolume,
+  nextScene,
+  previousScene,
+  scene1,
+  scene2,
+  scene3,
+  scene4,
+  scene5,
+  scene6,
+  scene7,
+  scene8,
+  scene9,
+  scene10,
+  scene11,
+  scene12,
 }
 
 extension MidiActionInfo on MidiAction {
   /// Fader-style actions follow the CC value (0–127) instead of firing once.
   /// They can only be mapped to a CC message.
+  /// 0-based scene number for the "Scene N" actions, null for all others.
+  int? get sceneIndex {
+    final m = RegExp(r'^scene(\d+)$').firstMatch(name);
+    return m == null ? null : int.parse(m.group(1)!) - 1;
+  }
+
   bool get isContinuous =>
       this == MidiAction.masterVolume || this == MidiAction.cueVolume;
 
@@ -38,6 +58,12 @@ extension MidiActionInfo on MidiAction {
         return 'Master Fader';
       case MidiAction.cueVolume:
         return 'Cue Fader';
+      case MidiAction.nextScene:
+        return 'Next Scene';
+      case MidiAction.previousScene:
+        return 'Prev Scene';
+      default:
+        return 'Scene ${sceneIndex! + 1}';
     }
   }
 
@@ -59,6 +85,12 @@ extension MidiActionInfo on MidiAction {
         return Icons.tune_rounded;
       case MidiAction.cueVolume:
         return Icons.headphones_rounded;
+      case MidiAction.nextScene:
+        return Icons.arrow_forward_rounded;
+      case MidiAction.previousScene:
+        return Icons.arrow_back_rounded;
+      default:
+        return Icons.grid_view_rounded;
     }
   }
 }

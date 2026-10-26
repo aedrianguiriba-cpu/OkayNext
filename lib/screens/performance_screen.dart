@@ -121,7 +121,9 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
                             [
                               if ((state.projectName ?? '').isNotEmpty)
                                 state.projectName!,
-                              groups.activeSetlistName,
+                              groups.activeDisplayName,
+                              if (groups.activeSceneIndex != null)
+                                groups.activeSetlistName,
                             ].join('  ·  '),
                             style: TextStyle(
                               color: col.textSecondary,

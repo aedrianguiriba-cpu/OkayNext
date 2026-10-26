@@ -141,7 +141,10 @@ class _SceneScreenState extends State<SceneScreen> {
                           ),
                         ),
                         Text(
-                          'Now: ${groups.activeSetlistName}',
+                          groups.activeSceneIndex == null
+                              ? 'Now: ${groups.activeSetlistName}'
+                              : 'Now: ${groups.activeDisplayName}  ·  '
+                                  '${groups.activeSetlistName}',
                           style:
                               TextStyle(color: col.textSecondary, fontSize: 11),
                         ),
@@ -241,15 +244,14 @@ class _SceneTile extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              (active ? AppTheme.accent : color)
-                  .withValues(alpha: active ? 0.22 : assigned ? 0.1 : 0.04),
+              color.withValues(alpha: active ? 0.24 : assigned ? 0.1 : 0.04),
               col.surfaceVariant,
             ],
           ),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: active
-                ? AppTheme.accent
+                ? color
                 : assigned
                     ? color.withValues(alpha: 0.35)
                     : col.border,
@@ -258,8 +260,7 @@ class _SceneTile extends StatelessWidget {
           boxShadow: active
               ? [
                   BoxShadow(
-                      color: AppTheme.accent.withValues(alpha: 0.25),
-                      blurRadius: 22),
+                      color: color.withValues(alpha: 0.28), blurRadius: 22),
                 ]
               : null,
         ),
@@ -271,11 +272,7 @@ class _SceneTile extends StatelessWidget {
                 Text(
                   '${index + 1}',
                   style: TextStyle(
-                    color: active
-                        ? AppTheme.accent
-                        : assigned
-                            ? color
-                            : col.textMuted,
+                    color: assigned || active ? color : col.textMuted,
                     fontSize: 34,
                     fontWeight: FontWeight.w900,
                     height: 1,
@@ -287,7 +284,7 @@ class _SceneTile extends StatelessWidget {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: AppTheme.accent,
+                      color: color,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: const Text(
@@ -325,8 +322,7 @@ class _SceneTile extends StatelessWidget {
               Row(
                 children: [
                   Icon(Icons.library_music_rounded,
-                      size: 13,
-                      color: active ? AppTheme.accent : col.textSecondary),
+                      size: 13, color: active ? color : col.textSecondary),
                   const SizedBox(width: 5),
                   Expanded(
                     child: Text(

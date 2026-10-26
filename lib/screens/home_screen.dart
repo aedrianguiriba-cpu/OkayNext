@@ -6,6 +6,7 @@ import '../providers/ableton_provider.dart';
 import '../providers/key_bindings_provider.dart';
 import '../providers/locator_groups_provider.dart';
 import '../theme/app_theme.dart';
+import '../widgets/scene_chips.dart';
 import '../widgets/setlist_selector.dart';
 import '../widgets/tap_scale.dart';
 import '../widgets/transport_controls.dart';
@@ -1702,7 +1703,7 @@ class _DisconnectedState extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Image.asset(
-              'assets/icon/app_icon.png',
+              'assets/icon/app_icon_square.png',
               width: 96,
               height: 96,
               filterQuality: FilterQuality.high,
@@ -1773,6 +1774,11 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Size get preferredSize => const Size.fromHeight(66);
 
+  void _openScenes(BuildContext context) => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const SceneScreen()),
+      );
+
   @override
   Widget build(BuildContext context) {
     final col = context.col;
@@ -1789,158 +1795,166 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
           children: [
             SizedBox(
               height: 64,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                child: Row(
-                  children: [
-                    // ── Logo mark ─────────────────────────────────────────
-                    Image.asset(
-                      'assets/icon/app_icon.png',
-                      width: 34,
-                      height: 34,
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                      cacheWidth: 136, // 34 × 4× for retina headroom
-                    ),
-                    const SizedBox(width: 10),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  // Narrow windows: drop button text; the cluster also scales
+                  // down below rather than overflowing.
+                  final compact = constraints.maxWidth < 1100;
 
-                    // ── Brand + project info ───────────────────────────────
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text(
-                            'OkayNext',
-                            style: TextStyle(
-                              color: AppTheme.accent,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.3,
-                              height: 1.1,
-                            ),
-                          ),
-                          if (state.projectName != null && state.projectName!.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              state.projectName!,
-                              style: TextStyle(
-                                color: col.textSecondary,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
+                  Widget divider() => Container(
+                        width: 1,
+                        height: 34,
+                        margin: const EdgeInsets.symmetric(horizontal: 12),
+                        color: col.border,
+                      );
 
-                    // ── Setlist selector ───────────────────────────────────
-                    if (connected) ...[
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 180),
-                        child: const SetlistSelector(),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-
-                    // ── Locator count ──────────────────────────────────────
-                    if (connected && locatorCount > 0) ...[
-                      Tooltip(
-                        message: '$locatorCount locators',
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: AppTheme.accent.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                                color: AppTheme.accent.withValues(alpha: 0.3)),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.queue_music_rounded,
-                                  size: 15, color: AppTheme.accent),
-                              const SizedBox(width: 6),
-                              Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: Row(
+                      children: [
+                        // ── Brand ──────────────────────────────────────────
+                        Image.asset(
+                          'assets/icon/app_icon_square.png',
+                          width: 34,
+                          height: 34,
+                          fit: BoxFit.contain,
+                          filterQuality: FilterQuality.high,
+                          cacheWidth: 136,
+                          errorBuilder: (_, _, _) => const Icon(
+                              Icons.queue_music_rounded,
+                              size: 30,
+                              color: AppTheme.accent),
+                        ),
+                        const SizedBox(width: 10),
+                        // Fixed-size brand block. (Not Flexible: that would
+                        // claim half the bar and squeeze the controls.)
+                        ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 200),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Text(
+                                  'OkayNext',
+                                  style: TextStyle(
+                                    color: AppTheme.accent,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.3,
+                                    height: 1.1,
+                                  ),
+                                ),
+                                if (state.projectName != null &&
+                                    state.projectName!.isNotEmpty) ...[
+                                  const SizedBox(height: 2),
                                   Text(
-                                    '$locatorCount',
-                                    style: const TextStyle(
-                                      color: AppTheme.accent,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w800,
-                                      height: 1.0,
-                                      fontFeatures: [FontFeature.tabularFigures()],
+                                    state.projectName!,
+                                    style: TextStyle(
+                                      color: col.textSecondary,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ],
+                            ),
+                        ),
+
+                        // ── Everything else, right-aligned ─────────────────
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Show controls
+                                  if (connected) ...[
+                                    _Labeled(
+                                      caption: locatorCount > 0
+                                          ? 'SETLIST  ·  $locatorCount ${locatorCount == 1 ? 'SONG' : 'SONGS'}'
+                                          : 'SETLIST',
+                                      // Fixed width so the bar doesn't shift
+                                      // when names change.
+                                      child: const SizedBox(
+                                        width: 270,
+                                        child: SetlistSelector(),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    _Labeled(
+                                      caption: 'SCENE',
+                                      child: SceneChips(
+                                        onAssign: (_) => _openScenes(context),
+                                      ),
+                                    ),
+                                    divider(),
+                                  ],
+
+                                  // System status
+                                  _Labeled(
+                                    caption: 'MIDI',
+                                    child: ConstrainedBox(
+                                      constraints: const BoxConstraints(
+                                          minWidth: 130, maxWidth: 170),
+                                      child: const MidiSelector(),
                                     ),
                                   ),
-                                  const SizedBox(height: 1),
-                                  Text(
-                                    locatorCount == 1 ? 'SONG' : 'SONGS',
-                                    style: TextStyle(
-                                      color: col.textMuted,
-                                      fontSize: 7,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: 0.8,
-                                      height: 1.0,
+                                  const SizedBox(width: 10),
+                                  _Labeled(
+                                    caption: 'ABLETON',
+                                    child: _AppBarConnPill(
+                                        status: state.connectionStatus),
+                                  ),
+                                  divider(),
+
+                                  // Actions
+                                  if (connected) ...[
+                                    _Labeled(
+                                      caption: null,
+                                      child: _AppBarBtn(
+                                        icon: Icons.grid_view_rounded,
+                                        label: compact ? null : 'Scenes',
+                                        tooltip: 'Scenes',
+                                        onTap: () => _openScenes(context),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                  ],
+                                  if (onPerformance != null) ...[
+                                    _Labeled(
+                                      caption: null,
+                                      child: _AppBarBtn(
+                                        icon: Icons.fullscreen_rounded,
+                                        label: compact ? null : 'Perform',
+                                        tooltip: 'Performance mode',
+                                        primary: true,
+                                        onTap: onPerformance!,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                  ],
+                                  _Labeled(
+                                    caption: null,
+                                    child: _AppBarBtn(
+                                      icon: Icons.settings_outlined,
+                                      tooltip: 'Settings',
+                                      onTap: onSettings!,
                                     ),
                                   ),
                                 ],
                               ),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-
-                    // ── MIDI device ────────────────────────────────────────
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 150),
-                      child: const MidiSelector(),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-
-                    // ── Connection status ──────────────────────────────────
-                    _AppBarConnPill(status: state.connectionStatus),
-
-                    // ── Scene mode ─────────────────────────────────────────
-                    if (connected) ...[
-                      const SizedBox(width: 8),
-                      _AppBarBtn(
-                        icon: Icons.grid_view_rounded,
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const SceneScreen()),
-                        ),
-                      ),
-                    ],
-
-                    // ── Performance mode ───────────────────────────────────
-                    if (onPerformance != null) ...[
-                      const SizedBox(width: 8),
-                      _AppBarBtn(
-                        icon: Icons.fullscreen_rounded,
-                        accentColor: AppTheme.accent,
-                        onTap: onPerformance!,
-                      ),
-                    ],
-
-                    // ── Settings ───────────────────────────────────────────
-                    const SizedBox(width: 6),
-                    _AppBarBtn(
-                      icon: Icons.settings_outlined,
-                      onTap: onSettings!,
-                    ),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
 
@@ -1970,6 +1984,43 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
+/// A control with a small caption above it. A null [caption] keeps the same
+/// vertical space so buttons line up with captioned controls.
+class _Labeled extends StatelessWidget {
+  final String? caption;
+  final Widget child;
+  const _Labeled({required this.caption, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final col = context.col;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: 12,
+          child: caption == null
+              ? null
+              : Text(
+                  caption!,
+                  maxLines: 1,
+                  style: TextStyle(
+                    color: col.textMuted,
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1,
+                    height: 1.2,
+                  ),
+                ),
+        ),
+        const SizedBox(height: 3),
+        child,
+      ],
+    );
+  }
+}
+
 class _AppBarConnPill extends StatelessWidget {
   final ConnectionStatus status;
   const _AppBarConnPill({required this.status});
@@ -1979,24 +2030,26 @@ class _AppBarConnPill extends StatelessWidget {
     final col = context.col;
     final (color, label) = switch (status) {
       ConnectionStatus.connected => (AppTheme.success, 'Live'),
-      ConnectionStatus.connecting => (AppTheme.warning, 'Sync…'),
+      ConnectionStatus.connecting => (AppTheme.warning, 'Syncing…'),
       ConnectionStatus.disconnected => (col.textMuted, 'Offline'),
     };
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      constraints: const BoxConstraints(minHeight: 34, minWidth: 84),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.22)),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 5,
-            height: 5,
+            width: 7,
+            height: 7,
             decoration: BoxDecoration(
               color: color,
               shape: BoxShape.circle,
@@ -2005,14 +2058,13 @@ class _AppBarConnPill extends StatelessWidget {
                   : null,
             ),
           ),
-          const SizedBox(width: 5),
+          const SizedBox(width: 7),
           Text(
             label,
             style: TextStyle(
               color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.1,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -2021,35 +2073,62 @@ class _AppBarConnPill extends StatelessWidget {
   }
 }
 
+/// Action button. With a [label] it shows icon + text; without, icon only.
+/// [primary] gives it a filled accent look for the main call to action.
 class _AppBarBtn extends StatelessWidget {
   final IconData icon;
-  final Color? accentColor;
+  final String? label;
+  final String tooltip;
+  final bool primary;
   final VoidCallback onTap;
-  const _AppBarBtn({required this.icon, required this.onTap, this.accentColor});
+  const _AppBarBtn({
+    required this.icon,
+    required this.onTap,
+    required this.tooltip,
+    this.label,
+    this.primary = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final col = context.col;
-    final iconColor = accentColor ?? col.textSecondary;
+    final fg = primary ? Colors.black : col.textSecondary;
 
-    return TapScale(
-      onTap: onTap,
-      pressedScale: 0.88,
-      child: Container(
-        width: 34,
-        height: 34,
-        decoration: BoxDecoration(
-          color: accentColor != null
-              ? accentColor!.withValues(alpha: 0.10)
-              : col.surfaceElevated,
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(
-            color: accentColor != null
-                ? accentColor!.withValues(alpha: 0.30)
-                : col.border,
+    return Tooltip(
+      message: tooltip,
+      child: TapScale(
+        onTap: onTap,
+        pressedScale: 0.92,
+        child: Container(
+          height: 34,
+          constraints: const BoxConstraints(minWidth: 34),
+          padding: EdgeInsets.symmetric(horizontal: label == null ? 0 : 12),
+          decoration: BoxDecoration(
+            color: primary ? AppTheme.accent : col.surfaceElevated,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: primary ? AppTheme.accent : col.border,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 17, color: fg),
+              if (label != null) ...[
+                const SizedBox(width: 6),
+                Text(
+                  label!,
+                  style: TextStyle(
+                    color: fg,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
-        child: Icon(icon, size: 17, color: iconColor),
       ),
     );
   }
@@ -2071,7 +2150,7 @@ class _NoLocatorsState extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Image.asset(
-              'assets/icon/app_icon.png',
+              'assets/icon/app_icon_square.png',
               width: 80,
               height: 80,
               filterQuality: FilterQuality.high,

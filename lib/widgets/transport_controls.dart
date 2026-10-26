@@ -366,7 +366,8 @@ class MidiSelector extends StatelessWidget {
         ],
       ],
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        constraints: const BoxConstraints(minHeight: 34),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
           color: col.surfaceVariant,
           borderRadius: BorderRadius.circular(8),

@@ -22,8 +22,12 @@ class SetlistSelector extends StatelessWidget {
     final allNames = ableton.state.locators.map((l) => l.name).toList();
     final lists = groups.setlists;
 
+    final sceneActive = groups.activeSceneIndex != null;
+
     return PopupMenuButton<String>(
-      tooltip: 'Setlists',
+      tooltip: sceneActive
+          ? '${groups.activeDisplayName} → ${groups.activeSetlistName}'
+          : 'Setlists',
       position: PopupMenuPosition.under,
       offset: const Offset(0, 6),
       onSelected: (v) => _onSelected(context, v),
@@ -86,30 +90,50 @@ class SetlistSelector extends StatelessWidget {
         ),
       ],
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        constraints: const BoxConstraints(minHeight: 34),
+        padding: const EdgeInsets.only(left: 10, right: 4),
         decoration: BoxDecoration(
           color: col.surfaceElevated,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: col.border),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.library_music_rounded,
-                size: 15, color: AppTheme.accent),
+            Icon(
+                sceneActive
+                    ? Icons.grid_view_rounded
+                    : Icons.library_music_rounded,
+                size: 15,
+                color: AppTheme.accent),
             const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                groups.activeSetlistName,
+            Expanded(
+              // Scene name (bold) · assigned setlist (muted), one line.
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: groups.activeDisplayName,
+                      style: TextStyle(
+                        color: col.textPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (sceneActive)
+                      TextSpan(
+                        text: '  ·  ${groups.activeSetlistName}',
+                        style: TextStyle(
+                          color: col.textSecondary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                  ],
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: col.textPrimary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: const TextStyle(fontSize: 12),
               ),
             ),
+            const SizedBox(width: 6),
             Icon(Icons.arrow_drop_down_rounded, size: 18, color: col.textMuted),
           ],
         ),
