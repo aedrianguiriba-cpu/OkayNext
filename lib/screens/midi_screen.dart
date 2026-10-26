@@ -78,7 +78,7 @@ class _MidiScreenState extends State<MidiScreen> {
           // ── Mappings ───────────────────────────────────────────────────
           Row(
             children: [
-              _label(context, 'BUTTON MAPPINGS'),
+              _label(context, 'MAPPINGS'),
               const Spacer(),
               TextButton.icon(
                 onPressed: () => _confirmReset(context, midi),
@@ -159,7 +159,8 @@ class _MidiScreenState extends State<MidiScreen> {
           'Mappings will be reset to:\n'
           'Play → CC 20  •  Stop → CC 21\n'
           'Next → CC 22  •  Prev → CC 23\n'
-          'Record → CC 24\n'
+          'Record → CC 24  •  Loop → CC 25\n'
+          'Master Fader → CC 26  •  Cue Fader → CC 27\n'
           '(all on Channel 1)',
           style: TextStyle(color: col.textSecondary, height: 1.5),
         ),
@@ -477,7 +478,9 @@ class _MappingRow extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     learning
-                        ? 'Press a button on your device…'
+                        ? (action.isContinuous
+                            ? 'Move a knob or fader on your device…'
+                            : 'Press a button on your device…')
                         : mapping?.displayName ?? 'Not assigned',
                     style: TextStyle(
                       color: learning
@@ -575,12 +578,14 @@ class _MappingRow extends StatelessWidget {
                     selected: selectedType == MidiMsgType.cc,
                     onTap: () => setSt(() => selectedType = MidiMsgType.cc),
                   ),
-                  const SizedBox(width: 8),
-                  _TypeChip(
-                    label: 'Note',
-                    selected: selectedType == MidiMsgType.noteOn,
-                    onTap: () => setSt(() => selectedType = MidiMsgType.noteOn),
-                  ),
+                  if (!action.isContinuous) ...[
+                    const SizedBox(width: 8),
+                    _TypeChip(
+                      label: 'Note',
+                      selected: selectedType == MidiMsgType.noteOn,
+                      onTap: () => setSt(() => selectedType = MidiMsgType.noteOn),
+                    ),
+                  ],
                 ],
               ),
               const SizedBox(height: 14),
@@ -749,7 +754,9 @@ class _LearnBannerState extends State<_LearnBanner>
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Listening… press a button on your device to assign it to "${widget.action.label}".',
+                widget.action.isContinuous
+                    ? 'Listening… move a knob or fader on your device to assign it to "${widget.action.label}".'
+                    : 'Listening… press a button on your device to assign it to "${widget.action.label}".',
                 style: TextStyle(
                     color: AppTheme.accent.withValues(alpha: _alpha.value),
                     fontSize: 12,

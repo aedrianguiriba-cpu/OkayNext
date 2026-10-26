@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter_midi_command/flutter_midi_command.dart';
 import 'package:flutter_midi_command_ble/flutter_midi_command_ble.dart';
+import 'package:universal_ble/universal_ble.dart' show UniversalBle;
 
 /// Thin wrapper around flutter_midi_command (v1.x) with BLE MIDI support.
 ///
@@ -28,10 +29,31 @@ class MidiService {
     }
   }
 
-  Future<void> connectToDevice(MidiDevice device) async {
+  /// BLE MIDI devices already paired with the OS. Pads like the M-Vave SMC-Pad
+  /// stop advertising once paired, so a scan never finds them; the OS list
+  /// does. The plugin can connect to these by id without a prior scan.
+  Future<List<MidiDevice>> getPairedBleDevices() async {
+    try {
+      final list = await UniversalBle.getSystemDevices(withServices: [midiServiceId])
+          .timeout(const Duration(seconds: 15));
+      return [
+        for (final d in list)
+          if (d.name != null && d.name!.isNotEmpty)
+            MidiDevice(d.deviceId, d.name!, MidiDeviceType.ble, false),
+      ];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Returns an error message on failure, null on success.
+  Future<String?> connectToDevice(MidiDevice device) async {
     try {
       await _mc.connectToDevice(device);
-    } catch (_) {}
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
   }
 
   void disconnectDevice(MidiDevice device) {

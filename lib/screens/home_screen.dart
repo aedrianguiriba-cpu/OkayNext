@@ -6,9 +6,11 @@ import '../providers/ableton_provider.dart';
 import '../providers/key_bindings_provider.dart';
 import '../providers/locator_groups_provider.dart';
 import '../theme/app_theme.dart';
+import '../widgets/setlist_selector.dart';
 import '../widgets/tap_scale.dart';
 import '../widgets/transport_controls.dart';
 import 'performance_screen.dart';
+import 'scene_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -172,10 +174,13 @@ class _LocatorListState extends State<_LocatorList> {
     final ableton = context.read<AbletonProvider>();
     // Use raw state locators (not the ordered list) so the source of truth
     // for existence is always Ableton's actual track list.
-    final allNames = ableton.state.locators.map((l) => l.name).toList();
+    final rawNames = ableton.state.locators.map((l) => l.name).toList();
     // Locators haven't arrived from Ableton yet — skip to avoid overwriting
     // _locatorOrder with an empty list before we know the full locator set.
-    if (allNames.isEmpty) return;
+    if (rawNames.isEmpty) return;
+    // Songs left out of the active setlist are excluded everywhere.
+    final hidden = gp.hiddenNames;
+    final allNames = rawNames.where((n) => !hidden.contains(n)).toList();
     final slots = gp.topSlots(List.from(allNames));
     final ordered = <String>[];
     for (final slot in slots) {
@@ -193,7 +198,7 @@ class _LocatorListState extends State<_LocatorList> {
     for (final n in allNames) {
       if (!ordered.contains(n)) ordered.add(n);
     }
-    ableton.setLocatorOrder(ordered);
+    ableton.setLocatorOrder(ordered, hidden: Set.of(hidden));
   }
 
   void _enterSelect(String locatorName) {
@@ -1222,7 +1227,9 @@ class _SelectionBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final col = context.col;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      // Right inset clears the 116px sidebar (+10px margin) that overlays the
+      // right edge, so the Group button isn't hidden behind it.
+      padding: const EdgeInsets.fromLTRB(14, 8, 136, 8),
       decoration: BoxDecoration(
         color: AppTheme.accent.withValues(alpha: 0.08),
         border: Border(
@@ -1830,31 +1837,91 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
                       ),
                     ),
 
+                    // ── Setlist selector ───────────────────────────────────
+                    if (connected) ...[
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 180),
+                        child: const SetlistSelector(),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+
                     // ── Locator count ──────────────────────────────────────
                     if (connected && locatorCount > 0) ...[
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 9, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: col.surfaceElevated,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: col.border),
-                        ),
-                        child: Text(
-                          '$locatorCount',
-                          style: TextStyle(
-                            color: col.textSecondary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            fontFeatures: const [FontFeature.tabularFigures()],
+                      Tooltip(
+                        message: '$locatorCount locators',
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: AppTheme.accent.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                                color: AppTheme.accent.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.queue_music_rounded,
+                                  size: 15, color: AppTheme.accent),
+                              const SizedBox(width: 6),
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '$locatorCount',
+                                    style: const TextStyle(
+                                      color: AppTheme.accent,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w800,
+                                      height: 1.0,
+                                      fontFeatures: [FontFeature.tabularFigures()],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 1),
+                                  Text(
+                                    locatorCount == 1 ? 'SONG' : 'SONGS',
+                                    style: TextStyle(
+                                      color: col.textMuted,
+                                      fontSize: 7,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.8,
+                                      height: 1.0,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
                       ),
                       const SizedBox(width: 8),
                     ],
 
+                    // ── MIDI device ────────────────────────────────────────
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 150),
+                      child: const MidiSelector(),
+                    ),
+                    const SizedBox(width: 8),
+
                     // ── Connection status ──────────────────────────────────
                     _AppBarConnPill(status: state.connectionStatus),
+
+                    // ── Scene mode ─────────────────────────────────────────
+                    if (connected) ...[
+                      const SizedBox(width: 8),
+                      _AppBarBtn(
+                        icon: Icons.grid_view_rounded,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const SceneScreen()),
+                        ),
+                      ),
+                    ],
 
                     // ── Performance mode ───────────────────────────────────
                     if (onPerformance != null) ...[

@@ -23,6 +23,9 @@ class AbletonProvider extends ChangeNotifier {
   // Custom display order — list of locator names in user-defined sequence
   List<String> _locatorOrder = [];
 
+  // Songs excluded from the active setlist (see LocatorGroupsProvider)
+  Set<String> _hiddenNames = {};
+
   // Last setlist sent to Python (to avoid redundant sends)
   List<String> _lastSentSetlist = [];
 
@@ -130,7 +133,9 @@ class AbletonProvider extends ChangeNotifier {
   bool get isConnected => _state.connectionStatus == ConnectionStatus.connected;
 
   List<AbletonLocator> get locators {
-    final raw = _state.locators;
+    final raw = _state.locators
+        .where((l) => !_hiddenNames.contains(l.name))
+        .toList();
     if (_locatorOrder.isEmpty) return raw;
     final ordered = <AbletonLocator>[];
     for (final name in _locatorOrder) {
@@ -147,10 +152,25 @@ class AbletonProvider extends ChangeNotifier {
   List<AbletonTrack> get tracks => _state.tracks;
 
   /// Directly set the locator order (e.g. after group reorder).
-  void setLocatorOrder(List<String> orderedNames) {
+  /// [hidden] are songs excluded from the active setlist; they're dropped from
+  /// [locators] and never sent to Ableton's navigation list.
+  void setLocatorOrder(List<String> orderedNames,
+      {Set<String> hidden = const {}}) {
+    // When songs are added/removed from the setlist the indices shift, so
+    // keep the same song selected by name rather than by position.
+    final hiddenChanged = !setEquals(_hiddenNames, hidden);
+    final keepName =
+        hiddenChanged && _selectedIndex != null ? selectedLocator?.name : null;
+    _hiddenNames = Set<String>.of(hidden);
+
     _locatorOrder = List<String>.from(orderedNames);
     _lastSentSetlist = _locatorOrder;
     _service.setSetlist(_locatorOrder);
+    if (hiddenChanged && _selectedIndex != null) {
+      final i =
+          keepName == null ? -1 : locators.indexWhere((l) => l.name == keepName);
+      _selectedIndex = i == -1 ? 0 : i;
+    }
     // The initialization fallback in _onStateUpdate runs before groups load,
     // so it may have told Python the wrong active song (Ableton's first
     // locator by position rather than the user's first group song).
@@ -159,6 +179,22 @@ class AbletonProvider extends ChangeNotifier {
     // so Python's _active_name is updated before the user presses play.
     if (_selectedIndex == 0 && orderedNames.isNotEmpty) {
       _service.setActiveSong(orderedNames[0]);
+    }
+    notifyListeners();
+  }
+
+  /// Called after switching setlists: select the song Ableton is on if it's in
+  /// the new setlist, otherwise its first song, and tell Ableton.
+  void selectStartOfSetlist() {
+    _pendingClearTimer?.cancel();
+    _pendingClearTimer = null;
+    _pendingLocatorName = null;
+    final list = locators;
+    if (list.isEmpty) {
+      _selectedIndex = null;
+    } else {
+      _selectedIndex = currentLocatorIndex ?? 0;
+      _service.setActiveSong(list[_selectedIndex!].name);
     }
     notifyListeners();
   }

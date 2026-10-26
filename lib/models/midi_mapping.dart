@@ -10,9 +10,16 @@ enum MidiAction {
   previousSong,
   record,
   loop,
+  masterVolume,
+  cueVolume,
 }
 
 extension MidiActionInfo on MidiAction {
+  /// Fader-style actions follow the CC value (0–127) instead of firing once.
+  /// They can only be mapped to a CC message.
+  bool get isContinuous =>
+      this == MidiAction.masterVolume || this == MidiAction.cueVolume;
+
   String get label {
     switch (this) {
       case MidiAction.play:
@@ -27,6 +34,10 @@ extension MidiActionInfo on MidiAction {
         return 'Record';
       case MidiAction.loop:
         return 'Loop';
+      case MidiAction.masterVolume:
+        return 'Master Fader';
+      case MidiAction.cueVolume:
+        return 'Cue Fader';
     }
   }
 
@@ -44,6 +55,10 @@ extension MidiActionInfo on MidiAction {
         return Icons.fiber_manual_record_rounded;
       case MidiAction.loop:
         return Icons.loop_rounded;
+      case MidiAction.masterVolume:
+        return Icons.tune_rounded;
+      case MidiAction.cueVolume:
+        return Icons.headphones_rounded;
     }
   }
 }
@@ -99,5 +114,7 @@ class MidiMapping {
         const MidiMapping(msgType: MidiMsgType.cc, channel: 0, number: 23, action: MidiAction.previousSong),
         const MidiMapping(msgType: MidiMsgType.cc, channel: 0, number: 24, action: MidiAction.record),
         const MidiMapping(msgType: MidiMsgType.cc, channel: 0, number: 25, action: MidiAction.loop),
+        const MidiMapping(msgType: MidiMsgType.cc, channel: 0, number: 26, action: MidiAction.masterVolume),
+        const MidiMapping(msgType: MidiMsgType.cc, channel: 0, number: 27, action: MidiAction.cueVolume),
       ];
 }

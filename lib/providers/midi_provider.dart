@@ -43,14 +43,17 @@ class MidiProvider extends ChangeNotifier {
   Future<void> _init() async {
     await _loadMappings();
     await refreshDevices();
-    _midiSub = _midi.packetStream?.listen(_onMidiPacket);
+    unawaited(_loadPaired());
+    _midiSub =_midi.packetStream?.listen(_onMidiPacket);
     _deviceSub = _midi.setupChangedStream?.listen((_) => refreshDevices());
   }
 
   // ── Devices ───────────────────────────────────────────────────────────
 
   Future<void> refreshDevices() async {
-    _devices = await _midi.getDevices();
+    final live = await _midi.getDevices();
+    final liveIds = live.map((d) => d.id).toSet();
+    _devices = [...live, ..._paired.where((d) => !liveIds.contains(d.id))];
     final prev = _connectedDevice;
     if (prev != null) {
       _connectedDevice = _devices.where((d) => d.id == prev.id).firstOrNull;
@@ -58,10 +61,51 @@ class MidiProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> connectToDevice(MidiDevice device) async {
-    await _midi.connectToDevice(device);
+  List<MidiDevice> _paired = [];
+
+  Future<void> _loadPaired() async {
+    _paired = await _midi.getPairedBleDevices();
+    await refreshDevices();
+  }
+
+  bool _scanning = false;
+  bool get scanning => _scanning;
+  String? scanError;
+
+  /// Scans for nearby BLE MIDI devices for [duration], refreshing the list as
+  /// they are discovered. Devices not yet paired with the OS only appear
+  /// while a scan is running.
+  Future<void> scanBluetooth({Duration duration = const Duration(seconds: 8)}) async {
+    if (_scanning) return;
+    _scanning = true;
+    scanError = null;
+    notifyListeners();
+
+    unawaited(_loadPaired());
+    scanError = await _midi.startBleScan();
+    if (scanError == null) {
+      final end = DateTime.now().add(duration);
+      while (DateTime.now().isBefore(end)) {
+        await Future.delayed(const Duration(seconds: 1));
+        await refreshDevices();
+      }
+      _midi.stopBleScan();
+    }
+    _scanning = false;
+    await refreshDevices();
+  }
+
+  /// Returns an error message if the connection failed, null on success.
+  Future<String?> connectToDevice(MidiDevice device) async {
+    final error = await _midi.connectToDevice(device);
+    if (error != null) {
+      _connectedDevice = null;
+      await refreshDevices();
+      return error;
+    }
     _connectedDevice = device;
     await refreshDevices();
+    return null;
   }
 
   void disconnectDevice() {
@@ -100,6 +144,7 @@ class MidiProvider extends ChangeNotifier {
 
     MidiMsgType type;
     int number;
+    int value = 0;
 
     // Accept CC (0xB0), Note On (0x90), and Note Off (0x80)
     // Match on type+channel+number only — ignore value/velocity entirely
@@ -107,6 +152,7 @@ class MidiProvider extends ChangeNotifier {
     if (msgType == 0xB0 && data.length >= 2) {
       type = MidiMsgType.cc;
       number = data[1];
+      value = data.length >= 3 ? data[2] : 0;
     } else if (msgType == 0x90 && data.length >= 3 && data[2] > 0) {
       // Note On only; Note Off (0x80 or velocity 0) is ignored so a
       // press/release pair doesn't fire the action twice.
@@ -119,6 +165,9 @@ class MidiProvider extends ChangeNotifier {
     // Learn mode: save this message as the mapping for the pending action
     if (_learningFor != null) {
       final action = _learningFor!;
+      // Faders follow a CC value, so a note can't be assigned to them —
+      // keep listening until a CC (knob/fader move) arrives.
+      if (action.isContinuous && type != MidiMsgType.cc) return;
       _learningFor = null;
       _mappings.removeWhere((m) => m.action == action);
       _mappings.add(MidiMapping(
@@ -131,13 +180,22 @@ class MidiProvider extends ChangeNotifier {
     // Normal: dispatch to Ableton on every matching message
     for (final m in _mappings) {
       if (m.msgType == type && m.channel == channel && m.number == number) {
-        _executeAction(m.action);
+        _executeAction(m.action, value);
         break;
       }
     }
   }
 
-  void _executeAction(MidiAction action) {
+  // Last CC value sent per fader, so a controller streaming repeated values
+  // doesn't flood Ableton.
+  final Map<MidiAction, int> _lastFaderValue = {};
+
+  void _executeAction(MidiAction action, int value) {
+    if (action.isContinuous) {
+      if (_lastFaderValue[action] == value) return;
+      _lastFaderValue[action] = value;
+    }
+    final level = (value / 127.0).clamp(0.0, 1.0);
     switch (action) {
       case MidiAction.play:
         _ableton.play();
@@ -151,6 +209,10 @@ class MidiProvider extends ChangeNotifier {
         _ableton.record();
       case MidiAction.loop:
         _ableton.setLoop(!_ableton.loopEnabled);
+      case MidiAction.masterVolume:
+        _ableton.setMasterVolume(level);
+      case MidiAction.cueVolume:
+        _ableton.setCueVolume(level);
     }
   }
 

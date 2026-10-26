@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_midi_command/flutter_midi_command.dart' show MidiDeviceType;
 import 'package:provider/provider.dart';
 import '../providers/ableton_provider.dart';
 import '../providers/locator_groups_provider.dart';
+import '../providers/midi_provider.dart';
 import '../theme/app_theme.dart';
 import 'tap_scale.dart';
 
@@ -250,6 +252,161 @@ class _BpmTimeSigBlock extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ── MIDI selector ─────────────────────────────────────────────────────────────
+
+class MidiSelector extends StatelessWidget {
+  const MidiSelector({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final midi = context.watch<MidiProvider>();
+    final col = context.col;
+    final connected = midi.connectedDevice ??
+        midi.devices.where((d) => d.connected).firstOrNull;
+    final color = connected != null ? AppTheme.accent : col.textMuted;
+    final available = midi.devices.isNotEmpty;
+    // connected = accent, devices available = warning, none found = muted
+    final dotColor = connected != null
+        ? AppTheme.accent
+        : available
+            ? AppTheme.warning
+            : col.textMuted.withValues(alpha: 0.5);
+
+    return PopupMenuButton<String>(
+      tooltip: 'Select MIDI device',
+      position: PopupMenuPosition.under,
+      offset: const Offset(0, 6),
+      onOpened: () {
+        midi.refreshDevices();
+        midi.scanBluetooth();
+      },
+      onSelected: (id) async {
+        if (id == '__none__') {
+          midi.disconnectDevice();
+          return;
+        }
+        final device = midi.devices.where((d) => d.id == id).firstOrNull;
+        if (device == null) return;
+        final messenger = ScaffoldMessenger.maybeOf(context);
+        final error = await midi.connectToDevice(device);
+        if (error != null) {
+          messenger?.showSnackBar(SnackBar(
+            content: Text(
+              'Could not connect to ${device.name}. Close other apps using it '
+              '(e.g. BTMIDI Manager) and try again.\n$error',
+            ),
+            duration: const Duration(seconds: 6),
+          ));
+        }
+      },
+      itemBuilder: (_) => [
+        if (midi.devices.isEmpty)
+          PopupMenuItem<String>(
+            enabled: false,
+            child: Text(midi.scanError ??
+                (midi.scanning ? 'Scanning for devices…' : 'No MIDI devices found')),
+          ),
+        for (final d in midi.devices)
+          PopupMenuItem<String>(
+            value: d.id,
+            child: Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: d.id == connected?.id ? AppTheme.accent : AppTheme.warning,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    d.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: d.id == connected?.id
+                        ? const TextStyle(
+                            color: AppTheme.accent, fontWeight: FontWeight.w700)
+                        : null,
+                  ),
+                ),
+                if (d.type == MidiDeviceType.ble) ...[
+                  const SizedBox(width: 6),
+                  Icon(Icons.bluetooth_rounded,
+                      size: 14, color: Colors.lightBlueAccent.shade200),
+                  const SizedBox(width: 2),
+                  Text(
+                    'Bluetooth',
+                    style: TextStyle(
+                        color: Colors.lightBlueAccent.shade200,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ],
+                if (d.id == connected?.id) ...[
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Connected',
+                    style: TextStyle(
+                        color: AppTheme.accent,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        if (connected != null) ...[
+          const PopupMenuDivider(),
+          const PopupMenuItem<String>(value: '__none__', child: Text('Disconnect')),
+        ],
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        decoration: BoxDecoration(
+          color: col.surfaceVariant,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: connected != null ? AppTheme.accent.withValues(alpha: 0.5) : col.border,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: dotColor,
+                shape: BoxShape.circle,
+                boxShadow: connected != null || available
+                    ? [BoxShadow(color: dotColor.withValues(alpha: 0.6), blurRadius: 4)]
+                    : null,
+              ),
+            ),
+            const SizedBox(width: 5),
+            Icon(Icons.piano_rounded, size: 14, color: color),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                connected?.name ??
+                    (available ? '${midi.devices.length} available' : 'No MIDI'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: connected != null ? col.textPrimary : col.textMuted,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Icon(Icons.arrow_drop_down_rounded, size: 16, color: col.textMuted),
+          ],
+        ),
+      ),
     );
   }
 }

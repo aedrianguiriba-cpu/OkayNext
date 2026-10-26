@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.itbs" "\0"
-            VALUE "FileDescription", "setlistmanager" "\0"
+            VALUE "FileDescription", "OkayNext" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "setlistmanager" "\0"
+            VALUE "InternalName", "OkayNext" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.itbs. All rights reserved." "\0"
-            VALUE "OriginalFilename", "setlistmanager.exe" "\0"
-            VALUE "ProductName", "setlistmanager" "\0"
+            VALUE "OriginalFilename", "OkayNext.exe" "\0"
+            VALUE "ProductName", "OkayNext" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
