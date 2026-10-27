@@ -43,9 +43,11 @@ class AbletonState {
     this.projectName,
     this.timeSigNumerator = 4,
     this.timeSigDenominator = 4,
-    this.masterVolume = 1.0,
+    // Until Ableton reports the real values, sit at 0 dB (0.85) rather than
+    // the +6 dB maximum, which would look like a loud, wrong reading.
+    this.masterVolume = 0.85,
     this.masterVolStr = '',
-    this.cueVolume = 1.0,
+    this.cueVolume = 0.85,
     this.cueVolStr = '',
   });
 
