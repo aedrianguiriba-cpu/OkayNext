@@ -183,3 +183,31 @@ setlistmanager/
 │   └── theme/                   ← Dark theme
 └── README.md
 ```
+
+
+## Installing (Windows installer)
+
+Build the installer with `powershell -ExecutionPolicy Bypass -File installeruild_installer.ps1`
+(needs Flutter and Inno Setup 6: `winget install JRSoftware.InnoSetup`). It produces
+`installer\output\OkayNext-Setup-<version>.exe`, which installs:
+
+- the OkayNext app (with the Microsoft runtime DLLs it needs),
+- the Ableton Remote Script, into your Ableton User Library's `Remote Scripts` folder
+  (the folder is shown and can be changed during setup),
+- the phone monitor page, and a Windows Firewall rule so phones can open it.
+
+After installing: restart Ableton, then Preferences > Link, Tempo & MIDI > Control Surface > OkayNext.
+
+## Phone monitor (browser)
+
+A read-only view of what Ableton is doing, for a phone or tablet browser. It is built into the
+app: no Python and no batch files.
+
+1. Start OkayNext on the PC and click the QR-code button in the top bar.
+2. Scan the code with the phone's camera (same Wi-Fi as the PC).
+
+The server inside the app forwards the phone to Ableton on one port (8090) and passes on only
+read requests, so the phone can look but never change anything. Switch it off in the same
+window. When running from source, build the page first: `flutter build web --no-web-resources-cdn`.
+If the phone can't open the page, run `setup_firewall.bat` once as Administrator (the installer
+does the equivalent for you).

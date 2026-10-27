@@ -11,7 +11,10 @@ import '../widgets/tap_scale.dart';
 import '../widgets/transport_controls.dart';
 
 class PerformanceScreen extends StatefulWidget {
-  const PerformanceScreen({super.key});
+  /// View-only mode for the phone/browser: no controls, no sidebar, no
+  /// shortcuts. It only shows what Ableton is doing.
+  final bool monitor;
+  const PerformanceScreen({super.key, this.monitor = false});
 
   @override
   State<PerformanceScreen> createState() => _PerformanceScreenState();
@@ -35,6 +38,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
   }
 
   KeyEventResult _onKey(FocusNode _, KeyEvent event) {
+    if (widget.monitor) return KeyEventResult.ignored;
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final p = context.read<AbletonProvider>();
     if (!p.isConnected) return KeyEventResult.ignored;
@@ -81,8 +85,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
     final col = context.col;
 
     final groups = context.watch<LocatorGroupsProvider>();
-    final activeName = selected?.name ?? state.currentLocatorName;
-    final sig = groups.getLocatorSig(activeName) ?? ableton.locatorTimeSig;
+    final sig = ableton.effectiveTimeSig(groups.getLocatorSig);
 
     return Focus(
       focusNode: _focusNode,
@@ -91,7 +94,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
       child: Scaffold(
         backgroundColor: col.background,
         body: GestureDetector(
-          onVerticalDragEnd: (d) {
+          onVerticalDragEnd: widget.monitor ? null : (d) {
             if (d.primaryVelocity == null) return;
             if (d.primaryVelocity! < -300) ableton.goToNext();
             if (d.primaryVelocity! > 300) ableton.goToPrevious();
@@ -106,25 +109,36 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   child: Row(
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.keyboard_arrow_down_rounded,
-                            size: 28),
-                        onPressed: () => Navigator.of(context).pop(),
-                        color: col.textSecondary,
-                        tooltip: 'Exit performance mode',
-                      ),
+                      if (widget.monitor)
+                        const _ViewOnlyPill()
+                      else
+                        IconButton(
+                          icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                              size: 28),
+                          onPressed: () => Navigator.of(context).pop(),
+                          color: col.textSecondary,
+                          tooltip: 'Exit performance mode',
+                        ),
                       const Spacer(),
-                      Column(
+                      Flexible(
+                        flex: 4,
+                        child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            [
+                            widget.monitor
+                                ? ((state.projectName ?? '').isEmpty
+                                    ? 'OkayNext'
+                                    : state.projectName!)
+                                : [
                               if ((state.projectName ?? '').isNotEmpty)
                                 state.projectName!,
                               groups.activeDisplayName,
                               if (groups.activeSceneIndex != null)
                                 groups.activeSetlistName,
                             ].join('  ·  '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: col.textSecondary,
                               fontSize: 12,
@@ -153,20 +167,23 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
                           ],
                         ],
                       ),
-                      const Spacer(),
-                      const SetlistSwitchButton(),
-                      const SizedBox(width: 4),
-                      IconButton(
-                        icon: const Icon(Icons.grid_view_rounded, size: 20),
-                        color: col.textSecondary,
-                        tooltip: 'Scenes',
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const SceneScreen()),
-                        ),
                       ),
-                      const SizedBox(width: 4),
+                      const Spacer(),
+                      if (!widget.monitor) ...[
+                        const SetlistSwitchButton(),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(Icons.grid_view_rounded, size: 20),
+                          color: col.textSecondary,
+                          tooltip: 'Scenes',
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const SceneScreen()),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
                       _ConnectionPill(state.connectionStatus),
                       const SizedBox(width: 8),
                     ],
@@ -224,7 +241,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
                                       label: 'PREV',
                                       name: prev?.name,
                                       leading: true,
-                                      onTap: prev != null
+                                      onTap: !widget.monitor && prev != null
                                           ? ableton.goToPrevious
                                           : null,
                                     ),
@@ -235,7 +252,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
                                       label: 'NEXT',
                                       name: next?.name,
                                       leading: false,
-                                      onTap: next != null
+                                      onTap: !widget.monitor && next != null
                                           ? ableton.goToNext
                                           : null,
                                     ),
@@ -253,11 +270,12 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
                         ),
                       ),
                     ),
-                    const SafeArea(
-                      top: false,
-                      left: false,
-                      child: SidebarTransport(),
-                    ),
+                    if (!widget.monitor)
+                      const SafeArea(
+                        top: false,
+                        left: false,
+                        child: SidebarTransport(),
+                      ),
                   ],
                 ),
               ),
@@ -336,7 +354,7 @@ class _NavCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final col = context.col;
-    final enabled = onTap != null;
+    final enabled = name != null;
     final chevron = Icon(
       leading ? Icons.chevron_left_rounded : Icons.chevron_right_rounded,
       color: enabled ? AppTheme.accent : col.border,
@@ -725,6 +743,39 @@ class _ConnectionPill extends StatelessWidget {
             label,
             style: TextStyle(
               color: color,
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ViewOnlyPill extends StatelessWidget {
+  const _ViewOnlyPill();
+
+  @override
+  Widget build(BuildContext context) {
+    final col = context.col;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: col.surfaceElevated,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: col.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.visibility_outlined, size: 13, color: col.textSecondary),
+          const SizedBox(width: 5),
+          Text(
+            'VIEW ONLY',
+            style: TextStyle(
+              color: col.textSecondary,
               fontSize: 9,
               fontWeight: FontWeight.w800,
               letterSpacing: 1,

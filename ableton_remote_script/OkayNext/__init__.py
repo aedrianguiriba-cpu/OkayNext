@@ -96,12 +96,31 @@ def _try_open_firewall():
         pass
 
 
+_SEND_TIMEOUT_S = 2
+
+
+def _set_send_timeout(conn, seconds=_SEND_TIMEOUT_S):
+    """Make sends time out without affecting reads (SO_SNDTIMEO)."""
+    try:
+        import sys
+        if sys.platform == "win32":
+            val = struct.pack("I", int(seconds * 1000))      # DWORD, ms
+        else:
+            val = struct.pack("ll", int(seconds), 0)         # struct timeval
+        conn.setsockopt(socket.SOL_SOCKET, socket.SO_SNDTIMEO, val)
+    except Exception:
+        pass
+
+
 class _WSClient:
     def __init__(self, conn):
         self.conn = conn
         self._lock = threading.Lock()
+        self._dead = False
 
     def send(self, text):
+        if self._dead:
+            return
         data = text.encode("utf-8") if isinstance(text, str) else text
         n = len(data)
         if n <= 125:
@@ -114,7 +133,13 @@ class _WSClient:
             try:
                 self.conn.sendall(hdr + data)
             except OSError:
-                pass
+                # Timed out or broken. A half-written frame can't be repaired,
+                # so drop this client; the reader thread then cleans it up.
+                self._dead = True
+                try:
+                    self.conn.close()
+                except OSError:
+                    pass
 
     def close(self):
         try:
@@ -203,6 +228,7 @@ class _WSServer:
                 "Sec-WebSocket-Accept: {}\r\n\r\n"
             ).format(accept).encode())
             conn.settimeout(None)
+            _set_send_timeout(conn)
 
             with self._lock:
                 self._clients.append(client)
@@ -650,8 +676,6 @@ class OkayNext(ControlSurface):
         self._midi_recv_count = 0      # diagnostic: counts receive_midi calls
         self._last_master_volume = None  # polled each update_display tick
         self._last_cue_volume = None    # polled each update_display tick
-        self._last_sig_n = None         # last broadcasted numerator
-        self._last_sig_d = None         # last broadcasted denominator
         self._direct_queue = queue.Queue()  # filled by _MidiDirectReader callback (Windows thread)
         self._midi_reader = _MidiDirectReader(self._direct_queue)
         self._ws = _WSServer(
@@ -760,27 +784,7 @@ class OkayNext(ControlSurface):
         except Exception:
             pass
 
-        # -- Time-signature poll (catches automation-driven changes) ----------
-        # Polled at ~100 ms cadence so automation changes are picked up even
-        # if the signature_numerator listener never fires for them.
-        # Uses _get_current_sig() which prefers BeatTime.numerator/denominator
-        # (the only API that reflects arrangement time-sig automation).
-        try:
-            s = self._song()
-            sig_n, sig_d, bar = self._get_current_sig(s)
-            if sig_n != self._last_sig_n or sig_d != self._last_sig_d:
-                self._last_sig_n = sig_n
-                self._last_sig_d = sig_d
-                self._ws.broadcast(json.dumps({
-                    “type”: “time_sig”,
-                    “numerator”: sig_n,
-                    “denominator”: sig_d,
-                    “current_bar”: bar,
-                }))
-        except Exception:
-            pass
-
-        # -- MIDI learn timeout - auto-cancel after ~20 s of no input --------
+        # â”€â”€ MIDI learn timeout â€” auto-cancel after ~20 s of no input â”€â”€â”€â”€â”€â”€
         if self._midi_learn_active:
             self._midi_learn_tick += 1
             if self._midi_learn_tick >= 200:   # 200 Ã— 100 ms = 20 s
@@ -815,8 +819,8 @@ class OkayNext(ControlSurface):
         s.add_tempo_listener(self._tempo_changed)
         s.add_record_mode_listener(self._state_changed)
         s.add_loop_listener(self._state_changed)
-        s.add_signature_numerator_listener(self._sig_changed)
-        s.add_signature_denominator_listener(self._sig_changed)
+        s.add_signature_numerator_listener(self._state_changed)
+        s.add_signature_denominator_listener(self._state_changed)
         s.add_current_song_time_listener(self._position_changed)
         s.add_cue_points_listener(self._cues_changed)
         try:
@@ -844,8 +848,8 @@ class OkayNext(ControlSurface):
             s.remove_tempo_listener(self._tempo_changed)
             s.remove_record_mode_listener(self._state_changed)
             s.remove_loop_listener(self._state_changed)
-            s.remove_signature_numerator_listener(self._sig_changed)
-            s.remove_signature_denominator_listener(self._sig_changed)
+            s.remove_signature_numerator_listener(self._state_changed)
+            s.remove_signature_denominator_listener(self._state_changed)
             s.remove_current_song_time_listener(self._position_changed)
             s.remove_cue_points_listener(self._cues_changed)
             try:
@@ -865,19 +869,6 @@ class OkayNext(ControlSurface):
         except Exception:
             pass
 
-    def _get_current_sig(self, s):
-        """Return (numerator, denominator, bar) from Ableton's transport values.
-
-        Reads s.signature_numerator / s.signature_denominator directly — these
-        ARE updated when arrangement Time Signature Markers are crossed, and the
-        signature_numerator/denominator listeners fire on each change.
-        """
-        sig_n = int(s.signature_numerator)
-        sig_d = int(s.signature_denominator)
-        pos   = float(s.current_song_time)
-        bar   = int(pos / max(1, sig_n)) + 1
-        return sig_n, sig_d, bar
-
     def _position_changed(self):
         """Lightweight tick on every beat. Sets advance flag if song boundary crossed."""
         try:
@@ -888,16 +879,11 @@ class OkayNext(ControlSurface):
             # Flag an active-name update for update_display (safe main-thread context)
             if not self._advance_flag and playing and current != self._active_name:
                 self._advance_flag = True
-
-            sig_n, sig_d, bar = self._get_current_sig(s)
             self._ws.broadcast(json.dumps({
                 "type": "position",
                 "playing": playing,
                 "locator": current,
                 "beat": pos,
-                "time_sig_numerator": sig_n,
-                "time_sig_denominator": sig_d,
-                "current_bar": bar,
             }))
         except Exception:
             pass
@@ -907,22 +893,6 @@ class OkayNext(ControlSurface):
             self._ws.broadcast(json.dumps({
                 "type": "bpm",
                 "bpm": float(self._song().tempo),
-            }))
-        except Exception:
-            pass
-
-    def _sig_changed(self):
-        """Fires when Ableton's displayed time signature changes."""
-        try:
-            s = self._song()
-            sig_n, sig_d, bar = self._get_current_sig(s)
-            self._last_sig_n = sig_n
-            self._last_sig_d = sig_d
-            self._ws.broadcast(json.dumps({
-                "type": "time_sig",
-                "numerator": sig_n,
-                "denominator": sig_d,
-                "current_bar": bar,
             }))
         except Exception:
             pass
@@ -983,6 +953,13 @@ class OkayNext(ControlSurface):
                 self._ws.send(client, json.dumps(self._build_state()))
             except Exception:
                 pass
+            self._send_volumes(client)
+            if self._setlist:
+                try:
+                    self._ws.send(client, json.dumps({
+                        "type": "setlist", "names": self._setlist}))
+                except Exception:
+                    pass
             self._ws.send(client, json.dumps(self._build_locators()))
             self._ws.send(client, json.dumps({
                 'type': 'midi_mappings',
@@ -1049,6 +1026,12 @@ class OkayNext(ControlSurface):
             s.tempo = float(msg.get("bpm", s.tempo))
         elif t == "set_setlist":
             self._setlist = list(msg.get("names", []))
+            # Let read-only viewers (the phone/browser monitor) mirror it.
+            try:
+                self._ws.broadcast(json.dumps({
+                    "type": "setlist", "names": self._setlist}))
+            except Exception:
+                pass
             # Bootstrap active name from current position if not already set
             if not self._active_name or self._active_name not in self._setlist:
                 try:
@@ -1111,6 +1094,7 @@ class OkayNext(ControlSurface):
                 self._ws.send(client, json.dumps(self._build_state()))
             except Exception:
                 pass
+            self._send_volumes(client)
         elif t == "get_locators":
             self._ws.send(client, json.dumps(self._build_locators()))
         elif t == "get_tracks":
@@ -1189,45 +1173,16 @@ class OkayNext(ControlSurface):
                         cue_names.append("{} @ {}".format(cp.name, round(cp.time, 2)))
                     except Exception:
                         cue_names.append("(error)")
-                track_data = self._build_tracks().get('data', [])
-                group_summary = [
-                    "{} (group, {} children)".format(
-                        td['name'],
-                        sum(1 for x in track_data if x.get('group_index') == td['index'])
-                    )
-                    for td in track_data if td.get('is_group')
-                ]
-                # BeatTime diagnostic: expose all attributes so we know
-                # exactly what get_current_beats_song_time() provides.
-                beat_time_info = {}
-                try:
-                    bt = s.get_current_beats_song_time()
-                    for attr in ('bar', 'beat', 'sub_division', 'numerator', 'denominator'):
-                        try:
-                            beat_time_info[attr] = getattr(bt, attr)
-                        except AttributeError:
-                            beat_time_info[attr] = 'N/A'
-                    beat_time_info['all_attrs'] = [
-                        a for a in dir(bt) if not a.startswith('_')
-                    ]
-                except Exception as bt_err:
-                    beat_time_info['error'] = str(bt_err)
-
                 self._ws.send(client, json.dumps({
                     "type": "debug",
-                    "project": getattr(s, 'name', None) or '(unknown)',
+                    "project": getattr(s, 'name', None) or '',
                     "cue_count": len(cues),
                     "cue_names": cue_names,
                     "track_count": len(list(s.tracks)),
-                    "group_count": len(group_summary),
-                    "groups": group_summary,
                     "is_playing": bool(s.is_playing),
                     "midi_map_ok": self._midi_map_ok,
                     "midi_map_count": self._midi_map_count,
                     "midi_mappings": len(self._midi_mappings),
-                    "sig_numerator": int(s.signature_numerator),
-                    "sig_denominator": int(s.signature_denominator),
-                    "beat_time": beat_time_info,
                 }))
             except Exception as e:
                 self._ws.send(client, json.dumps({"type": "debug", "error": str(e)}))
@@ -1597,34 +1552,59 @@ class OkayNext(ControlSurface):
 
     def _build_state(self):
         s = self._song()
-        pos = float(s.current_song_time)
-        sig_n, sig_d, bar = self._get_current_sig(s)
 
-        current_locator = self._current_locator_name(s, pos)
+        def safe(fn, default=None):
+            try:
+                return fn()
+            except Exception:
+                return default
+
+        pos = safe(lambda: s.current_song_time, 0.0)
+        sig = max(1, safe(lambda: s.signature_numerator, 4))
+        bar = int(pos / sig) + 1
+
+        current_locator = safe(lambda: self._current_locator_name(s, pos))
+        mixer = safe(lambda: s.master_track.mixer_device)
 
         return {
             "type": "state",
             "data": {
-                "playing": bool(s.is_playing),
-                "recording": bool(s.record_mode),
-                "bpm": float(s.tempo),
+                "playing": bool(safe(lambda: s.is_playing, False)),
+                "recording": bool(safe(lambda: s.record_mode, False)),
+                "bpm": float(safe(lambda: s.tempo, 120.0)),
                 "current_beat": float(pos),
                 "current_bar": bar,
                 "current_measure": bar,
-                "loop_enabled": bool(s.loop),
-                "loop_start": float(s.loop_start),
-                "loop_end": float(s.loop_start + s.loop_length),
+                "loop_enabled": bool(safe(lambda: s.loop, False)),
+                "loop_start": float(safe(lambda: s.loop_start, 0.0)),
+                "loop_end": float(safe(lambda: s.loop_start + s.loop_length, 0.0)),
                 "current_locator": current_locator,
+                # Song.name doesn't exist in every Live version.
                 "project_name": getattr(s, 'name', None) or '',
-                "time_sig_numerator": sig_n,
-                "time_sig_denominator": sig_d,
-                "master_volume": self._vol_normalize(s.master_track.mixer_device.volume),
-                "master_vol_str": self._vol_str(s.master_track.mixer_device.volume),
-                "cue_volume": self._vol_normalize(s.master_track.mixer_device.cue_volume),
-                "cue_vol_str": self._vol_str(s.master_track.mixer_device.cue_volume),
-                "server_ips": _get_local_ips(),
+                "time_sig_numerator": int(safe(lambda: s.signature_numerator, 4)),
+                "time_sig_denominator": int(safe(lambda: s.signature_denominator, 4)),
+                "master_volume": safe(lambda: self._vol_normalize(mixer.volume), 0.85),
+                "master_vol_str": safe(lambda: self._vol_str(mixer.volume), ''),
+                "cue_volume": safe(lambda: self._vol_normalize(mixer.cue_volume), 0.85),
+                "cue_vol_str": safe(lambda: self._vol_str(mixer.cue_volume), ''),
+                "server_ips": safe(_get_local_ips, []),
             },
         }
+
+    def _send_volumes(self, client):
+        """Send master/cue volume as their own messages, so the app gets the
+        real fader positions on connect even if the full state is missing."""
+        try:
+            mixer = self._song().master_track.mixer_device
+            for kind, param in (("master_volume", mixer.volume),
+                                ("cue_volume", mixer.cue_volume)):
+                self._ws.send(client, json.dumps({
+                    "type": kind,
+                    "value": round(self._vol_normalize(param), 4),
+                    "label": self._vol_str(param),
+                }))
+        except Exception:
+            pass
 
     def _build_locators(self):
         s = self._song()
@@ -1647,81 +1627,8 @@ class OkayNext(ControlSurface):
 
     def _build_tracks(self):
         s = self._song()
-        track_list = list(s.tracks)
-        n = len(track_list)
-        group_indices = [-1] * n
-
-        # ── Detect parent groups ──────────────────────────────────────────
-        # Ableton may return fresh Python wrapper objects on every attribute
-        # access, so neither `is` nor `==` reliably identifies the same
-        # Live object.  We try multiple comparison strategies in order.
-        def _find_in_list(target):
-            """Return the index of *target* in track_list, or -1."""
-            # 1. Python identity (works when the API caches wrappers)
-            for j, o in enumerate(track_list):
-                if o is target:
-                    return j
-            # 2. Equality (works when __eq__ compares the underlying ptr)
-            for j, o in enumerate(track_list):
-                try:
-                    if o == target:
-                        return j
-                except Exception:
-                    pass
-            return -1
-
-        any_found = False
-
-        # Strategy A: group_track attribute (Live 10.1+)
-        for i, t in enumerate(track_list):
-            try:
-                gt = getattr(t, 'group_track', None)
-                if gt is None:
-                    continue
-                gi = _find_in_list(gt)
-                if gi >= 0:
-                    group_indices[i] = gi
-                    any_found = True
-            except Exception:
-                pass
-
-        # Strategy B: canonical_parent (available in all Live versions).
-        # canonical_parent of a child track IS the group track.
-        # canonical_parent of a top-level track is the Song/Chain (no is_foldable).
-        if not any_found:
-            for i, t in enumerate(track_list):
-                try:
-                    cp = getattr(t, 'canonical_parent', None)
-                    if cp is None:
-                        continue
-                    if not getattr(cp, 'is_foldable', False):
-                        continue
-                    gi = _find_in_list(cp)
-                    if gi >= 0:
-                        group_indices[i] = gi
-                        any_found = True
-                except Exception:
-                    pass
-
-        # Strategy C: positional inference (zero API calls, always works).
-        # In Ableton's track list, non-group tracks that follow a group track
-        # belong to that group.  A new group resets the current parent.
-        # This is reliable when all (or most) tracks live inside groups —
-        # exactly the "one group per song" layout.
-        if not any_found:
-            current_group_idx = -1
-            for i, t in enumerate(track_list):
-                try:
-                    if getattr(t, 'is_foldable', False):
-                        current_group_idx = i
-                    elif current_group_idx >= 0:
-                        group_indices[i] = current_group_idx
-                except Exception:
-                    pass
-
-        # ── Build result ──────────────────────────────────────────────────
         result = []
-        for i, t in enumerate(track_list):
+        for i, t in enumerate(s.tracks):
             try:
                 result.append({
                     "index": i,
@@ -1730,7 +1637,6 @@ class OkayNext(ControlSurface):
                     "solo": bool(t.solo),
                     "arm": bool(t.arm),
                     "is_group": bool(t.is_foldable),
-                    "group_index": group_indices[i],
                     "volume": self._vol_normalize(t.mixer_device.volume),
                     "vol_str": self._vol_str(t.mixer_device.volume),
                 })

@@ -26,6 +26,10 @@ class AbletonProvider extends ChangeNotifier {
   // Songs excluded from the active setlist (see LocatorGroupsProvider)
   Set<String> _hiddenNames = {};
 
+  // Read-only monitor (browser): the setlist the PC app published to Ableton.
+  // When set, only these songs are shown, in this order.
+  Set<String>? _remoteVisible;
+
   // Last setlist sent to Python (to avoid redundant sends)
   List<String> _lastSentSetlist = [];
 
@@ -46,7 +50,17 @@ class AbletonProvider extends ChangeNotifier {
 
   AbletonProvider(this._service) {
     _service.stateStream.listen(_onStateUpdate);
+    if (_service.readOnly) _service.setlistStream.listen(_onRemoteSetlist);
     _init();
+  }
+
+  /// Browser monitor: follow the PC app's setlist (songs and order) instead
+  /// of Ableton's raw locator order.
+  void _onRemoteSetlist(List<String> names) {
+    if (names.isEmpty) return;
+    _locatorOrder = List<String>.from(names);
+    _remoteVisible = names.toSet();
+    notifyListeners();
   }
 
   void _onStateUpdate(AbletonState s) {
@@ -134,7 +148,9 @@ class AbletonProvider extends ChangeNotifier {
 
   List<AbletonLocator> get locators {
     final raw = _state.locators
-        .where((l) => !_hiddenNames.contains(l.name))
+        .where((l) =>
+            !_hiddenNames.contains(l.name) &&
+            (_remoteVisible == null || _remoteVisible!.contains(l.name)))
         .toList();
     if (_locatorOrder.isEmpty) return raw;
     final ordered = <AbletonLocator>[];
@@ -242,6 +258,10 @@ class AbletonProvider extends ChangeNotifier {
   /// Time Signature Markers during playback.
   (int, int)? get locatorTimeSig {
     final name = selectedLocator?.name ?? _state.currentLocatorName;
+    return _sigFromName(name);
+  }
+
+  static (int, int)? _sigFromName(String? name) {
     if (name == null) return null;
     final m = RegExp(r'(\d+)/(\d+)').firstMatch(name);
     if (m == null) return null;
@@ -249,6 +269,21 @@ class AbletonProvider extends ChangeNotifier {
     final d = int.tryParse(m.group(2)!);
     if (n != null && n > 0 && d != null && d > 0) return (n, d);
     return null;
+  }
+
+  /// The time signature to show and count beats in. Priority:
+  ///  1. the signature the user set for the active locator ([userSig]),
+  ///  2. one written in the locator's name ("Verse 6/8"),
+  ///  3. Ableton's live signature.
+  /// While playing, the locator that is actually playing is the active one;
+  /// otherwise it is the selected locator.
+  (int, int) effectiveTimeSig((int, int)? Function(String?) userSig) {
+    final name = (isPlaying ? _state.currentLocatorName : null) ??
+        selectedLocator?.name ??
+        _state.currentLocatorName;
+    return userSig(name) ??
+        _sigFromName(name) ??
+        (_state.timeSigNumerator, _state.timeSigDenominator);
   }
 
   AbletonLocator? get nextLocator {
@@ -301,10 +336,34 @@ class AbletonProvider extends ChangeNotifier {
 
   Future<void> _init() async {
     final prefs = await SharedPreferences.getInstance();
-    _host = prefs.getString('ableton_host') ?? '127.0.0.1';
-    _port = prefs.getInt('ableton_port') ?? 9000;
+    if (kIsWeb) {
+      // The monitor: the page's own address is where Ableton is reached (the
+      // monitor server forwards the connection). ?host=…&port=… overrides it.
+      // Saved values are ignored so a stale entry can't break a fresh scan.
+      final q = Uri.base.queryParameters;
+      _host = q['host'] ?? _defaultHost;
+      _port = int.tryParse(q['port'] ?? '') ?? _defaultPort;
+    } else {
+      _host = prefs.getString('ableton_host') ?? _defaultHost;
+      _port = prefs.getInt('ableton_port') ?? 9000;
+    }
     notifyListeners();
     _service.connect(_host, _port);
+  }
+
+  /// In a browser the app is served by the same PC that runs Ableton, so the
+  /// page's own host is the right default (not 127.0.0.1, which on a phone
+  /// would mean the phone itself).
+  static String get _defaultHost {
+    if (kIsWeb && Uri.base.host.isNotEmpty) return Uri.base.host;
+    return '127.0.0.1';
+  }
+
+  /// In a browser, the port the page was served from (the monitor server also
+  /// forwards the Ableton connection there); otherwise Ableton's own 9000.
+  static int get _defaultPort {
+    if (kIsWeb && Uri.base.hasPort && Uri.base.port > 0) return Uri.base.port;
+    return 9000;
   }
 
   Future<void> _saveSettings() async {
@@ -317,7 +376,7 @@ class AbletonProvider extends ChangeNotifier {
     _host = host;
     _port = port;
     notifyListeners();
-    await _saveSettings();
+    if (!kIsWeb) await _saveSettings(); // the monitor never persists these
     _service.connect(_host, _port);
   }
 

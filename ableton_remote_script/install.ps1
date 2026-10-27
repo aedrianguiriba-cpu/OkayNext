@@ -1,8 +1,8 @@
-# SetlistBridge Installer
+# OkayNext Remote Script installer (manual alternative to the Windows installer)
 # Run this script from the ableton_remote_script folder:
 #   Right-click install.ps1 → Run with PowerShell
 
-$ScriptName = "SetlistBridge"
+$ScriptName = "OkayNext"
 $Source = Join-Path $PSScriptRoot $ScriptName
 
 # ── Find all possible Ableton Remote Scripts locations ──────────────────────
@@ -53,11 +53,11 @@ if (Test-Path $target) {
 }
 
 Copy-Item $Source $target -Recurse
-Write-Host "Copied SetlistBridge to:"
+Write-Host "Copied OkayNext to:"
 Write-Host "  $target"
 Write-Host ""
 Write-Host "✓ Done! Now:"
 Write-Host "  1. Restart Ableton Live completely"
-Write-Host "  2. Preferences → Link/Tempo/MIDI → Control Surface → SetlistBridge"
+Write-Host "  2. Preferences → Link/Tempo/MIDI → Control Surface → OkayNext"
 Write-Host ""
 Read-Host "Press Enter to close"

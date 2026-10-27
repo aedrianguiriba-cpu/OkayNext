@@ -6,6 +6,12 @@ import '../models/ableton_state.dart';
 /// WebSocket client for the OkayNext MIDI Remote Script running inside
 /// Ableton Live. Auto-reconnects every 5 s when disconnected.
 class AbletonService {
+  /// A read-only service (the phone/browser monitor) only ever asks Ableton
+  /// for information. Anything that could change a song, fader, transport or
+  /// the setlist is dropped before it reaches the socket.
+  final bool readOnly;
+  AbletonService({this.readOnly = false});
+
   WebSocketChannel? _channel;
   StreamSubscription? _sub;
   Timer? _pingTimer;
@@ -21,12 +27,16 @@ class AbletonService {
   final _volLabelController = StreamController<Map<String, dynamic>>.broadcast();
   final _masterVolLabelController = StreamController<String>.broadcast();
   final _cueVolLabelController = StreamController<String>.broadcast();
+  final _setlistController = StreamController<List<String>>.broadcast();
 
   Stream<AbletonState> get stateStream => _stateController.stream;
   Stream<Map<String, dynamic>> get debugStream => _debugController.stream;
   Stream<Map<String, dynamic>> get volLabelStream => _volLabelController.stream;
   Stream<String> get masterVolLabelStream => _masterVolLabelController.stream;
   Stream<String> get cueVolLabelStream => _cueVolLabelController.stream;
+
+  /// The setlist order the controlling app (PC) last sent to Ableton.
+  Stream<List<String>> get setlistStream => _setlistController.stream;
 
   AbletonState _state = const AbletonState();
   AbletonState get state => _state;
@@ -52,7 +62,8 @@ class AbletonService {
       final uri = Uri.parse('ws://$host:$port');
       _channel = WebSocketChannel.connect(uri);
 
-      await _channel!.ready;
+      // A blocked port (firewall) never answers; don't sit on "connecting".
+      await _channel!.ready.timeout(const Duration(seconds: 8));
 
       _sub = _channel!.stream.listen(
         _onMessage,
@@ -179,6 +190,9 @@ class AbletonService {
           if (v != null) _emit(_state.copyWith(cueVolume: v, cueVolStr: lbl));
         case 'cue_vol_label':
           _cueVolLabelController.add(msg['label'] as String? ?? '');
+        case 'setlist':
+          final names = (msg['names'] as List?)?.whereType<String>().toList();
+          if (names != null) _setlistController.add(names);
         case 'vol_label':
           _volLabelController.add(msg);
         case 'debug':
@@ -215,6 +229,11 @@ class AbletonService {
   }
 
   void _send(Map<String, dynamic> msg) {
+    if (readOnly) {
+      // Only pure queries may pass.
+      final type = msg['type'] as String? ?? '';
+      if (type != 'ping' && !type.startsWith('get_')) return;
+    }
     try { _channel?.sink.add(jsonEncode(msg)); } catch (_) {}
   }
 
@@ -263,6 +282,7 @@ class AbletonService {
     _volLabelController.close();
     _masterVolLabelController.close();
     _cueVolLabelController.close();
+    _setlistController.close();
   }
 }
 

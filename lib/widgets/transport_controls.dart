@@ -223,8 +223,7 @@ class _BpmTimeSigBlock extends StatelessWidget {
     final groups  = context.watch<LocatorGroupsProvider>();
     final connected = ableton.isConnected;
     final bpm = ableton.state.bpm;
-    final activeName = ableton.selectedLocator?.name ?? ableton.state.currentLocatorName;
-    final locSig = groups.getLocatorSig(activeName) ?? ableton.locatorTimeSig;
+    final locSig = ableton.effectiveTimeSig(groups.getLocatorSig);
     final col = context.col;
 
     return Column(
@@ -242,7 +241,7 @@ class _BpmTimeSigBlock extends StatelessWidget {
         ),
         Text(
           connected
-              ? (locSig != null ? '${locSig.$1}/${locSig.$2}' : '--/--')
+              ? '${locSig.$1}/${locSig.$2}'
               : '--/--',
           style: TextStyle(
             color: col.textSecondary,

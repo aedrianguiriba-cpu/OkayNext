@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +7,8 @@ import '../providers/ableton_provider.dart';
 import '../providers/key_bindings_provider.dart';
 import '../providers/locator_groups_provider.dart';
 import '../theme/app_theme.dart';
+import '../services/monitor_server.dart';
+import '../widgets/phone_monitor_dialog.dart';
 import '../widgets/scene_chips.dart';
 import '../widgets/setlist_selector.dart';
 import '../widgets/tap_scale.dart';
@@ -1940,6 +1943,11 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
                                   ],
                                   _Labeled(
                                     caption: null,
+                                    child: const _PhoneMonitorButton(),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _Labeled(
+                                    caption: null,
                                     child: _AppBarBtn(
                                       icon: Icons.settings_outlined,
                                       tooltip: 'Settings',
@@ -2016,6 +2024,76 @@ class _Labeled extends StatelessWidget {
         ),
         const SizedBox(height: 3),
         child,
+      ],
+    );
+  }
+}
+
+/// QR-code button; shows how many devices are watching right now.
+class _PhoneMonitorButton extends StatefulWidget {
+  const _PhoneMonitorButton();
+
+  @override
+  State<_PhoneMonitorButton> createState() => _PhoneMonitorButtonState();
+}
+
+class _PhoneMonitorButtonState extends State<_PhoneMonitorButton> {
+  StreamSubscription<void>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    _sub = MonitorServer.instance.changes.listen((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final n = MonitorServer.instance.clients.length;
+    final plural = n == 1 ? '' : 's';
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        _AppBarBtn(
+          icon: Icons.qr_code_2_rounded,
+          tooltip: n == 0
+              ? 'Phone monitor (QR code)'
+              : 'Phone monitor: $n device$plural connected',
+          onTap: () => showPhoneMonitorDialog(context),
+        ),
+        if (n > 0)
+          Positioned(
+            right: -4,
+            top: -4,
+            child: IgnorePointer(
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 16),
+                height: 16,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppTheme.success,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$n',
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
